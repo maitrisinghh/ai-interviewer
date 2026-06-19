@@ -131,7 +131,8 @@ const result = await Bun.build({
   sourcemap: "linked",
   define: {
     "process.env.NODE_ENV": JSON.stringify("production"),
-  },
+    "process.env.DEEPGRAM_KEY": JSON.stringify(process.env.DEEPGRAM_KEY ?? ""),
+},
   ...cliConfig,
 });
 
