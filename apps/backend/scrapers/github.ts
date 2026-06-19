@@ -7,10 +7,12 @@ export async function scrapeGithub(username: string) {
         headers: {
             "Accept": "application/vnd.github+json",
             "X-GitHub-Api-Version": "2022-11-28",
+            ...(process.env.GITHUB_TOKEN && {
+                "Authorization": `Bearer ${process.env.GITHUB_TOKEN}`
+            }),
         },
     };
 
-    // Only attach the proxy agent if a PROXY_URL env var is set
     if (process.env.PROXY_URL) {
         config.httpsAgent = new HttpsProxyAgent(process.env.PROXY_URL);
     }
