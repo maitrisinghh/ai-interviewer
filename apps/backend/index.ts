@@ -168,3 +168,35 @@ app.get("/api/v1/result/:interviewId", async (req, res) => {
 });
 
 app.listen(3001, () => console.log("Backend running on :3001"));
+app.get("/api/v1/deepgram-token", async (req, res) => {
+    try {
+        const response = await fetch("https://api.deepgram.com/v1/projects", {
+            headers: {
+                Authorization: `Token ${process.env.DEEPGRAM_API_KEY}`,
+            },
+        });
+        const data = await response.json() as any;
+        const projectId = data.projects[0].project_id;
+
+        const keyResponse = await fetch(
+            `https://api.deepgram.com/v1/projects/${projectId}/keys`,
+            {
+                method: "POST",
+                headers: {
+                    Authorization: `Token ${process.env.DEEPGRAM_API_KEY}`,
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    comment: "temp-key",
+                    scopes: ["usage:write"],
+                    time_to_live_in_seconds: 60,
+                }),
+            }
+        );
+        const keyData = await keyResponse.json() as any;
+        res.json({ key: keyData.key });
+    } catch (error) {
+        console.error("Deepgram token error:", error);
+        res.status(500).json({ message: "Failed to generate token" });
+    }
+});

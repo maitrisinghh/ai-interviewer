@@ -1,4 +1,4 @@
-import { BACKEND_URL, DEEPGRAM_KEY } from "@/lib/config";
+import { BACKEND_URL } from "@/lib/config";
 import axios from "axios";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useNavigate, useParams } from "react-router";
@@ -7,7 +7,6 @@ import { Button } from "./ui/button";
 import { VoiceOrb } from "./VoiceOrb";
 
 type Status = "connecting" | "ai-speaking" | "user-speaking" | "processing" | "ending";
-
 
 function createLevelMeter(stream: MediaStream, audioCtx: AudioContext) {
     const source = audioCtx.createMediaStreamSource(stream);
@@ -46,7 +45,6 @@ export function Interview() {
     const isEndingRef = useRef(false);
     const keepAliveRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-    // Animate level meters
     const startRaf = useCallback(() => {
         const tick = () => {
             if (userMeterRef.current) setUserLevel(userMeterRef.current());
@@ -55,7 +53,6 @@ export function Interview() {
         rafRef.current = requestAnimationFrame(tick);
     }, []);
 
-    // Speak text via Web Speech API, returns promise that resolves when done
     const speak = useCallback((text: string): Promise<void> => {
         return new Promise((resolve) => {
             window.speechSynthesis.cancel();
@@ -64,14 +61,12 @@ export function Interview() {
             utter.pitch = 1.0;
             utter.volume = 1.0;
 
-            // Pick a natural voice if available
             const voices = window.speechSynthesis.getVoices();
             const preferred = voices.find(
-    (v) => v.lang.startsWith("en") && (v.name.includes("Google") || v.name.includes("Samantha") || v.name.includes("Daniel"))
-);
+                (v) => v.lang.startsWith("en") && (v.name.includes("Google") || v.name.includes("Samantha") || v.name.includes("Daniel"))
+            );
             if (preferred) utter.voice = preferred;
 
-            // Animate AI orb while speaking
             let fakeLevel = 0;
             let direction = 1;
             const animInterval = setInterval(() => {
@@ -80,13 +75,6 @@ export function Interview() {
                 setAiLevel(Math.min(1, Math.max(0, fakeLevel)));
             }, 80);
 
-            utter.onend = () => {
-                clearInterval(animInterval);
-                setAiLevel(0);
-                resolve();
-            };
-
-            // Safety fallback: if onend never fires (Safari bug)
             const fallback = setTimeout(() => {
                 clearInterval(animInterval);
                 setAiLevel(0);
@@ -104,21 +92,25 @@ export function Interview() {
         });
     }, []);
 
-    // Start Deepgram WebSocket for user transcription
-    const startListening = useCallback(() => {
+    // Use a ref for submitUserResponse to avoid circular dependency with startListening
+    const submitUserResponseRef = useRef<() => Promise<void>>(async () => {});
+
+    const startListening = useCallback(async () => {
         if (!userStreamRef.current || isEndingRef.current) return;
 
         window.speechSynthesis.cancel();
         pendingTranscriptRef.current = "";
         setStatus("user-speaking");
 
+        const { data: tokenData } = await axios.get(`${BACKEND_URL}/api/v1/deepgram-token`);
+        const dgKey = tokenData.key;
+
         const socket = new WebSocket("wss://api.deepgram.com/v1/listen", [
             "token",
-            DEEPGRAM_KEY,
+            dgKey,
         ]);
         dgSocketRef.current = socket;
 
-        // Keep-alive ping every 8s so Deepgram doesn't time out
         keepAliveRef.current = setInterval(() => {
             if (socket.readyState === WebSocket.OPEN) {
                 socket.send(JSON.stringify({ type: "KeepAlive" }));
@@ -147,17 +139,32 @@ export function Interview() {
 
             pendingTranscriptRef.current += " " + transcript;
 
-            // Reset silence timer — submit after 2s of no speech
             if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
             silenceTimerRef.current = setTimeout(() => {
-                submitUserResponse();
+                submitUserResponseRef.current();
             }, 2000);
         };
 
         socket.onerror = (e) => console.error("Deepgram error", e);
     }, []);
 
-    // Stop listening, save transcript, trigger AI turn
+    const doAiTurn = useCallback(async () => {
+        if (isEndingRef.current) return;
+        setStatus("ai-speaking");
+
+        try {
+            const { data } = await axios.post(
+                `${BACKEND_URL}/api/v1/session/ai-turn/${interviewId}`
+            );
+            if (isEndingRef.current) return;
+            await speak(data.message);
+            if (!isEndingRef.current) startListening();
+        } catch (err) {
+            console.error("AI turn failed", err);
+            if (!isEndingRef.current) startListening();
+        }
+    }, [interviewId, speak, startListening]);
+
     const submitUserResponse = useCallback(async () => {
         if (isEndingRef.current) return;
 
@@ -181,36 +188,21 @@ export function Interview() {
         if (!isEndingRef.current) {
             await doAiTurn();
         }
-    }, [interviewId]);
+    }, [interviewId, doAiTurn]);
 
-    // Ask backend for next AI question, then speak it
-    const doAiTurn = useCallback(async () => {
-        if (isEndingRef.current) return;
-        setStatus("ai-speaking");
+    // Keep the ref in sync so startListening can always call the latest version
+    useEffect(() => {
+        submitUserResponseRef.current = submitUserResponse;
+    }, [submitUserResponse]);
 
-        try {
-            const { data } = await axios.post(
-                `${BACKEND_URL}/api/v1/session/ai-turn/${interviewId}`
-            );
-            if (isEndingRef.current) return;
-            await speak(data.message);
-            if (!isEndingRef.current) startListening();
-        } catch (err) {
-            console.error("AI turn failed", err);
-            if (!isEndingRef.current) startListening();
-        }
-    }, [interviewId, speak, startListening]);
-
-    // Boot sequence
     useEffect(() => {
         let cancelled = false;
 
         (async () => {
-            // Load voices (async in Chrome)
             if (window.speechSynthesis.getVoices().length === 0) {
                 await new Promise<void>((r) => {
                     window.speechSynthesis.onvoiceschanged = () => r();
-                    setTimeout(r, 1500); // fallback
+                    setTimeout(r, 1500);
                 });
             }
 
@@ -225,7 +217,6 @@ export function Interview() {
             await doAiTurn();
         })();
 
-        // Cancel TTS if user hides the tab
         const onVisibilityChange = () => {
             if (document.hidden) window.speechSynthesis.pause();
             else window.speechSynthesis.resume();
