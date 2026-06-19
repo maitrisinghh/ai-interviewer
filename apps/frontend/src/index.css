@@ -1,0 +1,91 @@
+@import "../styles/globals.css";
+
+@layer base {
+  :root {
+    @apply font-sans;
+  }
+
+  html,
+  body {
+    @apply m-0 min-h-screen min-w-[320px] bg-background text-foreground antialiased;
+    font-family: 'Inter', 'Space Grotesk', system-ui, sans-serif;
+  }
+
+  #root {
+    @apply min-h-screen;
+  }
+}
+
+/* Animated grid background */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  background-image:
+    linear-gradient(rgba(34, 211, 238, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(34, 211, 238, 0.03) 1px, transparent 1px);
+  background-size: 48px 48px;
+  pointer-events: none;
+}
+
+/* Ambient glow blobs */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 60% 50% at 10% -10%, rgba(34, 211, 238, 0.12) 0%, transparent 70%),
+    radial-gradient(ellipse 50% 40% at 90% 110%, rgba(99, 102, 241, 0.10) 0%, transparent 70%),
+    radial-gradient(ellipse 40% 40% at 50% 50%, rgba(15, 17, 23, 0.98) 0%, transparent 100%);
+}
+
+/* Subtle scanline effect on cards */
+.card-scanline {
+  position: relative;
+  overflow: hidden;
+}
+.card-scanline::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 3px,
+    rgba(0, 0, 0, 0.03) 3px,
+    rgba(0, 0, 0, 0.03) 4px
+  );
+  pointer-events: none;
+}
+
+/* Cursor blink for terminal feel */
+@keyframes cursor-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+.cursor-blink::after {
+  content: "_";
+  animation: cursor-blink 1s step-end infinite;
+  color: #22d3ee;
+}
+
+/* Glow pulse for live indicator */
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 4px rgba(34, 211, 238, 0.6); }
+  50% { box-shadow: 0 0 14px rgba(34, 211, 238, 1), 0 0 24px rgba(34, 211, 238, 0.4); }
+}
+.glow-pulse {
+  animation: glow-pulse 2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion) {
+  *,
+  ::before,
+  ::after {
+    animation: none !important;
+    transition-duration: 0ms !important;
+  }
+}
