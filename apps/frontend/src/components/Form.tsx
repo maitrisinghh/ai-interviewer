@@ -17,14 +17,13 @@ export function Form() {
             toast("Please provide a valid GitHub URL");
             return;
         }
-
         setLoading(true);
         try {
             const response = await axios.post(`${BACKEND_URL}/api/v1/pre-interview`, {
                 github: github.trim(),
             });
             navigate(`/interview/${response.data.id}`);
-        } catch (e) {
+        } catch (e: any) {
             toast("Something went wrong starting your interview. Please try again.");
             setLoading(false);
         }
@@ -34,32 +33,35 @@ export function Form() {
         <main className="flex h-screen w-screen items-center justify-center overflow-hidden px-6">
             <div className="flex w-full max-w-2xl flex-col">
 
-                {/* Top terminal badge */}
+                {/* Terminal bar */}
                 <div className="mb-8 flex items-center gap-2">
                     <div className="flex items-center gap-1.5">
                         <span className="h-3 w-3 rounded-full bg-[#ff5f57]" />
                         <span className="h-3 w-3 rounded-full bg-[#febc2e]" />
                         <span className="h-3 w-3 rounded-full bg-[#28c840]" />
                     </div>
-                    
+                    <div className="ml-2 flex items-center gap-2 rounded-md border border-white/10 bg-white/5 px-3 py-1 font-mono text-xs text-[#22d3ee]/80">
+                        <Terminal className="size-3" />
+                        <span>ai-interviewer</span>
+                        <span className="text-white/30">~</span>
+                        <span className="text-white/50">v1.0.0</span>
+                    </div>
                 </div>
 
                 {/* Headline */}
                 <div className="mb-10">
-                    <p className="mb-3 font-bold leading-xs tracking-[0.25em] text-[#22d3ee] uppercase">
-                        / AI-Powered Interview Platform
+                    <p className="mb-3 font-mono text-xs tracking-[0.25em] text-[#22d3ee] uppercase">
+                        // AI-Powered Interview Platform
                     </p>
                     <h1 className="text-5xl font-bold leading-tight tracking-tight text-white sm:text-6xl">
                         Crack your next{" "}
-                        <span className="relative">
-                            <span className="bg-gradient-to-r from-[#22d3ee] to-[#818cf8] bg-clip-text text-transparent">
-                                tech interview
-                            </span>
+                        <span className="bg-gradient-to-r from-[#22d3ee] to-[#818cf8] bg-clip-text text-transparent">
+                            tech interview
                         </span>
                     </h1>
                     <p className="mt-4 max-w-lg text-base leading-relaxed text-slate-400">
-                        Drop your GitHub profile. Our AI analyzes your work, conducts a personalized
-                        voice interview, and scores your performance — in real time.
+                        Drop your GitHub profile. Our AI analyzes your work, conducts a
+                        personalized voice interview, and scores your performance — in real time.
                     </p>
                 </div>
 
@@ -107,7 +109,7 @@ export function Form() {
                     {[
                         { icon: Brain, label: "GitHub-aware questions" },
                         { icon: Mic, label: "Live voice interview" },
-                        { icon: Zap, label: "Instant AI feedback" },
+                        { icon: Zap, label: "Weighted score report" },
                     ].map(({ icon: Icon, label }) => (
                         <div
                             key={label}

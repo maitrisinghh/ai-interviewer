@@ -2,7 +2,7 @@ import { BACKEND_URL } from "@/lib/config";
 import axios from "axios";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useNavigate, useParams } from "react-router";
-import { Bot, Loader2, PhoneOff, User, Terminal } from "lucide-react";
+import { Bot, Loader2, PhoneOff, User } from "lucide-react";
 import { Button } from "./ui/button";
 import { VoiceOrb } from "./VoiceOrb";
 
@@ -44,6 +44,10 @@ export function Interview() {
     const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const isEndingRef = useRef(false);
     const keepAliveRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    // Prevent double-submission if silence timer fires while already processing
+    const isProcessingRef = useRef(false);
+
+    const submitUserResponseRef = useRef<() => Promise<void>>(async () => {});
 
     const startRaf = useCallback(() => {
         const tick = () => {
@@ -63,7 +67,11 @@ export function Interview() {
 
             const voices = window.speechSynthesis.getVoices();
             const preferred = voices.find(
-                (v) => v.lang.startsWith("en") && (v.name.includes("Google") || v.name.includes("Samantha") || v.name.includes("Daniel"))
+                (v) => v.lang.startsWith("en") && (
+                    v.name.includes("Google") ||
+                    v.name.includes("Samantha") ||
+                    v.name.includes("Daniel")
+                )
             );
             if (preferred) utter.voice = preferred;
 
@@ -92,14 +100,12 @@ export function Interview() {
         });
     }, []);
 
-    // Use a ref for submitUserResponse to avoid circular dependency with startListening
-    const submitUserResponseRef = useRef<() => Promise<void>>(async () => {});
-
     const startListening = useCallback(async () => {
         if (!userStreamRef.current || isEndingRef.current) return;
 
         window.speechSynthesis.cancel();
         pendingTranscriptRef.current = "";
+        isProcessingRef.current = false;
         setStatus("user-speaking");
 
         const { data: tokenData } = await axios.get(`${BACKEND_URL}/api/v1/deepgram-token`);
@@ -133,40 +139,73 @@ export function Interview() {
         };
 
         socket.onmessage = (msg) => {
+            if (isProcessingRef.current) return;
+
             const data = JSON.parse(msg.data);
+
+            // FIX 1: Only use final transcripts, not interim partials
+            const isFinal = data.is_final === true;
             const transcript = data.channel?.alternatives?.[0]?.transcript ?? "";
-            if (!transcript) return;
+
+            if (!transcript || !isFinal) return;
 
             pendingTranscriptRef.current += " " + transcript;
 
+            // FIX 1: 4s silence window so user can finish full sentences
             if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
             silenceTimerRef.current = setTimeout(() => {
                 submitUserResponseRef.current();
-            }, 2000);
+            }, 4000);
         };
 
         socket.onerror = (e) => console.error("Deepgram error", e);
+
+        // FIX 2: If socket closes unexpectedly while user-speaking, restart listening
+        socket.onclose = (e) => {
+            if (isEndingRef.current || isProcessingRef.current) return;
+            if (status === "user-speaking") {
+                console.warn("Deepgram socket closed unexpectedly, restarting...");
+                setTimeout(() => {
+                    if (!isEndingRef.current && !isProcessingRef.current) {
+                        startListening();
+                    }
+                }, 1000);
+            }
+        };
     }, []);
 
     const doAiTurn = useCallback(async () => {
         if (isEndingRef.current) return;
         setStatus("ai-speaking");
 
-        try {
-            const { data } = await axios.post(
-                `${BACKEND_URL}/api/v1/session/ai-turn/${interviewId}`
-            );
-            if (isEndingRef.current) return;
-            await speak(data.message);
-            if (!isEndingRef.current) startListening();
-        } catch (err) {
-            console.error("AI turn failed", err);
-            if (!isEndingRef.current) startListening();
+        // Retry up to 3 times if AI turn fails
+        for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+                const { data } = await axios.post(
+                    `${BACKEND_URL}/api/v1/session/ai-turn/${interviewId}`
+                );
+                if (isEndingRef.current) return;
+                await speak(data.message);
+                if (!isEndingRef.current) await startListening();
+                return;
+            } catch (err) {
+                console.error(`AI turn failed attempt ${attempt + 1}:`, err);
+                if (attempt === 2) {
+                    // After 3 failures, go back to listening so user isn't stuck
+                    console.error("AI turn failed 3 times, resuming listening");
+                    if (!isEndingRef.current) await startListening();
+                } else {
+                    // Wait 1s before retry
+                    await new Promise((r) => setTimeout(r, 1000));
+                }
+            }
         }
     }, [interviewId, speak, startListening]);
 
     const submitUserResponse = useCallback(async () => {
-        if (isEndingRef.current) return;
+        // FIX 2: Guard against double submission
+        if (isEndingRef.current || isProcessingRef.current) return;
+        isProcessingRef.current = true;
 
         if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
         if (keepAliveRef.current) clearInterval(keepAliveRef.current);
@@ -179,10 +218,15 @@ export function Interview() {
         setUserLevel(0);
         setStatus("processing");
 
-        if (transcript) {
-            await axios.post(`${BACKEND_URL}/api/v1/session/user/response/${interviewId}`, {
-                message: transcript,
-            });
+        try {
+            if (transcript) {
+                await axios.post(`${BACKEND_URL}/api/v1/session/user/response/${interviewId}`, {
+                    message: transcript,
+                });
+            }
+        } catch (err) {
+            console.error("Failed to save user response:", err);
+            // Continue anyway — don't block the interview
         }
 
         if (!isEndingRef.current) {
@@ -190,7 +234,6 @@ export function Interview() {
         }
     }, [interviewId, doAiTurn]);
 
-    // Keep the ref in sync so startListening can always call the latest version
     useEffect(() => {
         submitUserResponseRef.current = submitUserResponse;
     }, [submitUserResponse]);
@@ -282,11 +325,6 @@ export function Interview() {
                         )}
                         <span className="text-white/50">{statusLabel}</span>
                     </div>
-                </div>
-                <div className="flex items-center gap-2 font-mono text-xs text-white/30">
-                    <Terminal className="size-3" />
-                    <span>AI Interviewer</span>
-                    <span className="text-white/15">#{interviewId?.slice(0, 8)}</span>
                 </div>
             </header>
 

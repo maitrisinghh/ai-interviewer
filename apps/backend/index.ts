@@ -27,9 +27,9 @@ app.post("/api/v1/pre-interview", async (req, res) => {
         res.status(411).json({ message: "Incorrect body" });
         return;
     }
-    const githubUrl = data.github.endsWith("/") ? data.github.slice(0, -1) : data.github;
-    const githubUsername = githubUrl.split("/").pop()!;
     try {
+        const githubUrl = data.github.endsWith("/") ? data.github.slice(0, -1) : data.github;
+        const githubUsername = githubUrl.split("/").pop()!;
         const githubData = await scrapeGithub(githubUsername);
         const interview = await prisma.interview.create({
             data: { githubMetadata: JSON.stringify(githubData), status: "Pre" },
@@ -114,9 +114,11 @@ app.get("/api/v1/result/:interviewId", async (req, res) => {
             res.status(404).json({ message: "Interview not found" });
             return;
         }
+
         res.json({
             score: interview.score,
             feedback: interview.feedback,
+            breakdown: interview.breakdown,
             transcript: interview.conversations.map((c) => ({
                 type: c.type,
                 content: c.message,
@@ -124,12 +126,26 @@ app.get("/api/v1/result/:interviewId", async (req, res) => {
             })),
             status: interview.status,
         });
+
         if (interview.status !== "Done") {
-            const result = await calculateResult(interview.conversations);
-            await prisma.interview.update({
-                where: { id: req.params.interviewId },
-                data: { status: "Done", feedback: result.feedback, score: result.score },
-            });
+            try {
+                const result = await calculateResult(interview.conversations);
+                await prisma.interview.update({
+                    where: { id: req.params.interviewId },
+                    data: {
+                        status: "Done",
+                        feedback: result.feedback,
+                        score: result.score,
+                        breakdown: result.breakdown,
+                    },
+                });
+            } catch (calcError) {
+                console.error("calculateResult failed:", calcError);
+                await prisma.interview.update({
+                    where: { id: req.params.interviewId },
+                    data: { status: "Done" },
+                });
+            }
         }
     } catch (error) {
         console.error("Result error:", error);
