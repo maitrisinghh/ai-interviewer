@@ -40,12 +40,7 @@ export function Form() {
                         <span className="h-3 w-3 rounded-full bg-[#febc2e]" />
                         <span className="h-3 w-3 rounded-full bg-[#28c840]" />
                     </div>
-                    <div className="ml-2 flex items-center gap-2 rounded-md border border-white/10 bg-white/5 px-3 py-1 font-mono text-xs text-[#22d3ee]/80">
-                        <Terminal className="size-3" />
-                        <span>ai-interviewer</span>
-                        <span className="text-white/30">~</span>
-                        <span className="text-white/50">v1.0.0</span>
-                    </div>
+                    
                 </div>
 
                 {/* Headline */}
