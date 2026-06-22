@@ -50,8 +50,8 @@ export function Form() {
 
                 {/* Headline */}
                 <div className="mb-10">
-                    <p className="mb-3 font-mono text-xs tracking-[0.25em] text-[#22d3ee] uppercase">
-                        // AI-Powered Interview Platform
+                    <p className="mb-3 font-bold leading-tight tracking-[0.25em] text-[#22d3ee] uppercase">
+                        / AI-Powered Interview Platform
                     </p>
                     <h1 className="text-5xl font-bold leading-tight tracking-tight text-white sm:text-6xl">
                         Crack your next{" "}
